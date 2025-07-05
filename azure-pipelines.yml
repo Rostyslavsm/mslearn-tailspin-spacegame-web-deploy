@@ -97,7 +97,7 @@ stages:
           - task: AzureWebApp@1
             displayName: 'Azure App Service Deploy: Dev Website'
             inputs:
-              azureSubscription: '<Your-Azure-Subscription-Service-Connection>'
+              azureSubscription: 'Azure subscription 1(25ce748a-be5c-42fd-b2f6-d6a5d73d5a3d)'
               appType: 'webAppLinux'
-              appName: 'tailspin-space-game-web-dev-$(webappsuffix)'
+              appName: 'tailspin-space-game-web-dev-22768'
               package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip'
