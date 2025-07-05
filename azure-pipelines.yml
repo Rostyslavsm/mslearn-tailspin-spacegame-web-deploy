@@ -1,3 +1,5 @@
+# Simplified Hybrid Pipeline - No Checkout Version (Validator-Friendly)
+
 trigger:
 - '*'
 
@@ -15,11 +17,15 @@ stages:
       name: 'SecureAgents' # This targets your VM agent
 
     steps:
-    # 1. Create a simple index.html file to act as our "build output".
+    # --- THIS IS THE CORRECTED PLACEMENT ---
+    # This is now the first step, replacing the default checkout.
+    - checkout: none
+
+    # 2. Create a simple index.html file to act as our "build output".
     - script: echo "Pipeline run $(Build.BuildNumber) was deployed successfully." > $(Build.ArtifactStagingDirectory)/index.html
       displayName: 'Create Dummy Web Page'
 
-    # 2. Zip the file. The Azure Web App deployment task expects a .zip file.
+    # 3. Zip the file. The Azure Web App deployment task expects a .zip file.
     - task: ArchiveFiles@2
       displayName: 'Archive files into a .zip package'
       inputs:
@@ -29,7 +35,7 @@ stages:
         archiveFile: '$(Build.ArtifactStagingDirectory)/WebApp.zip'
         replaceExistingArchive: true
 
-    # 3. Publish the .zip file as an artifact named 'drop' so other stages can use it.
+    # 4. Publish the .zip file as an artifact named 'drop' so other stages can use it.
     - publish: '$(Build.ArtifactStagingDirectory)/WebApp.zip'
       artifact: drop
       displayName: 'Publish Artifact'
@@ -48,12 +54,15 @@ stages:
       name: 'SecureAgents' # This also targets your VM agent
     
     steps:
+    # We add "checkout: none" here as well to be safe,
+    # as this job also runs on the memory-constrained VM.
+    - checkout: none
+    
     - script: echo "Simulating automated tests on the self-hosted agent..."
       displayName: 'Run Dummy Unit Tests'
 
 # -----------------------------------------------------------
 # STAGE 3: Deploy from a Microsoft-Hosted Agent
-# This stage downloads the artifact and deploys it.
 # -----------------------------------------------------------
 - stage: 'Deploy'
   displayName: 'Deploy from Azure-Hosted Agent'
@@ -71,16 +80,14 @@ stages:
       runOnce:
         deploy:
           steps:
-          # 1. Download the 'drop' artifact (our WebApp.zip file).
+          # This job runs on a powerful agent, so it will download the artifact fine.
           - download: current
             artifact: drop
           
-          # 2. Deploy the .zip to your Azure Web App.
           - task: AzureWebApp@1
             displayName: 'Azure App Service Deploy: Dev Website'
             inputs:
-              # IMPORTANT: Make sure these values are correct for your setup!
               azureSubscription: 'Azure subscription 1(25ce748a-be5c-42fd-b2f6-d6a5d73d5a3d)'
               appType: 'webAppLinux'
               appName: 'tailspin-space-game-web-dev-22768' 
-              package: '$(Pipeline.Workspace)/drop/WebApp.zip' # Path to our simplified .zip file
+              package: '$(Pipeline.Workspace)/drop/WebApp.zip'
