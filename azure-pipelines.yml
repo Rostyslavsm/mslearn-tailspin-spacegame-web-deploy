@@ -1,59 +1,41 @@
-# Starting trigger. A push to any branch will run this.
 trigger:
 - '*'
 
-# Global variables
-variables:
-  buildConfiguration: 'Release'
-  
-# The pipeline is organized into STAGES
 stages:
 
 # -----------------------------------------------------------
-# STAGE 1: Build the code on Self-Hosted Agent
+# STAGE 1: "Build" on the Self-Hosted Agent
 # -----------------------------------------------------------
 - stage: 'Build'
   displayName: 'Build on Self-Hosted Agent'
   jobs: 
   - job: 'Build'
-    displayName: 'Build job'
-    
+    displayName: 'Create and Package Artifact'
     pool:
-      name: 'SecureAgents'
+      name: 'SecureAgents' # This targets your VM agent
 
     steps:
-    - task: UseDotNet@2
-      displayName: 'Use .NET SDK 8.x'
-      inputs:
-        version: '8.x'
-    
-    - task: DotNetCoreCLI@2
-      displayName: 'Restore project dependencies'
-      inputs:
-        command: 'restore'
-        projects: '**/*.csproj'
+    # 1. Create a simple index.html file to act as our "build output".
+    - script: echo "Pipeline run $(Build.BuildNumber) was deployed successfully." > $(Build.ArtifactStagingDirectory)/index.html
+      displayName: 'Create Dummy Web Page'
 
-    - task: DotNetCoreCLI@2
-      displayName: 'Build the project'
+    # 2. Zip the file. The Azure Web App deployment task expects a .zip file.
+    - task: ArchiveFiles@2
+      displayName: 'Archive files into a .zip package'
       inputs:
-        command: 'build'
-        arguments: '--no-restore --configuration $(buildConfiguration)'
-        projects: '**/*.csproj'
+        rootFolderOrFile: '$(Build.ArtifactStagingDirectory)'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/WebApp.zip'
+        replaceExistingArchive: true
 
-    - task: DotNetCoreCLI@2
-      displayName: 'Publish the project'
-      inputs:
-        command: 'publish'
-        projects: '**/*.csproj'
-        publishWebProjects: false
-        arguments: '--no-build --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/$(buildConfiguration)'
-        zipAfterPublish: true
-
-    - publish: '$(Build.ArtifactStagingDirectory)'
+    # 3. Publish the .zip file as an artifact named 'drop' so other stages can use it.
+    - publish: '$(Build.ArtifactStagingDirectory)/WebApp.zip'
       artifact: drop
+      displayName: 'Publish Artifact'
 
 # -----------------------------------------------------------
-# STAGE 2: Run a simple test on Self-Hosted Agent
+# STAGE 2: "Test" on the Self-Hosted Agent
 # -----------------------------------------------------------
 - stage: 'Test'
   displayName: 'Test on Self-Hosted Agent'
@@ -61,17 +43,17 @@ stages:
   condition: succeeded()
   jobs:
   - job: 'TestJob'
-    displayName: 'Run simple tests'
-    
+    displayName: 'Run Simple Tests'
     pool:
-      name: 'SecureAgents'
+      name: 'SecureAgents' # This also targets your VM agent
     
     steps:
-    - script: echo "Running automated tests on the self-hosted agent..."
-      displayName: 'Simulate Running Unit Tests'
+    - script: echo "Simulating automated tests on the self-hosted agent..."
+      displayName: 'Run Dummy Unit Tests'
 
 # -----------------------------------------------------------
-# STAGE 3: Deploy the code from a Microsoft-Hosted Agent
+# STAGE 3: Deploy from a Microsoft-Hosted Agent
+# This stage downloads the artifact and deploys it.
 # -----------------------------------------------------------
 - stage: 'Deploy'
   displayName: 'Deploy from Azure-Hosted Agent'
@@ -80,24 +62,25 @@ stages:
   jobs:
   - deployment: 'DeployToDev'
     displayName: 'Deploy to Dev Environment'
-    
     pool:
-      vmImage: 'ubuntu-22.04' 
+      vmImage: 'ubuntu-22.04' # This targets a fast Microsoft agent
     
-    # An environment allows for approvals and tracking
-    environment: 'Development'
+    environment: 'Development' # This enables manual approval
 
     strategy:
       runOnce:
         deploy:
           steps:
+          # 1. Download the 'drop' artifact (our WebApp.zip file).
           - download: current
             artifact: drop
           
+          # 2. Deploy the .zip to your Azure Web App.
           - task: AzureWebApp@1
             displayName: 'Azure App Service Deploy: Dev Website'
             inputs:
+              # IMPORTANT: Make sure these values are correct for your setup!
               azureSubscription: 'Azure subscription 1(25ce748a-be5c-42fd-b2f6-d6a5d73d5a3d)'
               appType: 'webAppLinux'
-              appName: 'tailspin-space-game-web-dev-22768'
-              package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip'
+              appName: 'tailspin-space-game-web-dev-22768' 
+              package: '$(Pipeline.Workspace)/drop/WebApp.zip' # Path to our simplified .zip file
